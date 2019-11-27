@@ -1,4 +1,3 @@
-#include <cmath>
 #include <mutex>
 #include <thread>
 
@@ -6,15 +5,26 @@
 
 #include <tachyon/spinlock.h>
 
-struct trivially_copyable_object
-{
-  int i = 0;
-  double d = 0.;
-};
+template <class Spinlock>
+class spinlock_test: public ::testing::Test
+{};
+
+using spinlock_impls = ::testing::Types<
+  tachyon::spinlock<tachyon::SpinlockPolicyTAS>,
+  tachyon::spinlock<tachyon::SpinlockPolicyCAS>
+>;
+
+TYPED_TEST_SUITE(spinlock_test, spinlock_impls);
 
 template <class Spinlock>
-void test_spinlock_lock_unlock(int num_writers, int num_readers, int num_iters)
+void test_spinlock_thread_safety(int num_writers, int num_readers, int num_iters)
 {
+  struct trivially_copyable_object
+  {
+      int i = 0;
+      double d = 0.;
+  };
+
   Spinlock lock;
   trivially_copyable_object shared_value;
 
@@ -63,51 +73,137 @@ void test_spinlock_lock_unlock(int num_writers, int num_readers, int num_iters)
   }
 }
 
-struct test_lock_unlock_params
+TYPED_TEST(spinlock_test, thread_safety)
 {
-  int num_writers = 1;
-  int num_readers = 4;
-  int num_iters = 1000000;
-};
-
-//template <class Spinlock>
-class spinlock_test: public ::testing::TestWithParam<test_lock_unlock_params>
-{};
-
-/*
-using spinlock_impls = ::testing::Types<
-  tachyon::spinlock<tachyon::SPINLOCK_TAS>,
-  tachyon::spinlock<tachyon::SPINLOCK_CAS>
-  >;
-
-TYPED_TEST_CASE(spinlock_test, spinlock_impls);
-*/
-
-TEST_P(spinlock_test, tas_lock_unlock)
-{
-  auto params = GetParam();
-//  test_spinlock_lock_unlock<TypeParam>(params.num_writers, params.num_readers, params.num_iters);
-  test_spinlock_lock_unlock<tachyon::spinlock<tachyon::SPINLOCK_TAS>>(params.num_writers, params.num_readers, params.num_iters);
+  for (int num_writers = 1; num_writers <= 4; num_writers <<= 1)
+  {
+    for (int num_readers = 1; num_readers <= std::thread::hardware_concurrency(); num_readers <<= 1)
+    {
+      test_spinlock_thread_safety<TypeParam>(num_writers, num_readers, 1000000 / num_readers);
+    }
+  }
 }
 
-//REGISTER_TYPED_TEST_CASE_P(spinlock_test, lock_unlock);
+TYPED_TEST(spinlock_test, is_locked)
+{
+  TypeParam lock;
+  ASSERT_FALSE(lock.is_locked());
 
-static std::vector<test_lock_unlock_params> test_lock_unlock_param_values{
-  {1, 1,  1000000},
-  {1, 4,  100000},
-  {1, 8,  100000},
-  {1, 16, 10000},
-  {1, 32, 10000},
-  {2, 1,  1000000},
-  {2, 4,  100000},
-  {2, 8,  100000},
-  {2, 16, 10000},
-  {2, 32, 10000},
-  {4, 1,  100000},
-  {4, 4,  100000},
-  {4, 8,  100000},
-  {4, 16, 10000},
-  {4, 32, 10000},
-};
+  {
+    std::lock_guard<TypeParam> guard(lock);
+    ASSERT_TRUE(lock.is_locked());
 
-INSTANTIATE_TEST_CASE_P(spinlock, spinlock_test, ::testing::ValuesIn(test_lock_unlock_param_values));
+    std::thread t(
+      [&lock]() {
+        ASSERT_TRUE(lock.is_locked());
+      });
+
+    t.join();
+  }
+
+  ASSERT_FALSE(lock.is_locked());
+}
+
+TYPED_TEST(spinlock_test, lock_unlock)
+{
+  TypeParam lock;
+  ASSERT_FALSE(lock.is_locked());
+  lock.lock();
+  ASSERT_TRUE(lock.is_locked());
+  ASSERT_FALSE(lock.try_lock());
+
+  std::thread t(
+    [&lock]() {
+      ASSERT_FALSE(lock.try_lock());
+      ASSERT_TRUE(lock.is_locked());
+    });
+
+  t.join();
+
+  lock.unlock();
+  ASSERT_FALSE(lock.is_locked());
+}
+
+TYPED_TEST(spinlock_test, try_lock)
+{
+  TypeParam lock;
+  ASSERT_FALSE(lock.is_locked());
+  ASSERT_TRUE(lock.try_lock());
+  ASSERT_TRUE(lock.is_locked());
+  ASSERT_FALSE(lock.try_lock());
+
+  std::thread t(
+    [&lock]() {
+      ASSERT_FALSE(lock.try_lock());
+      ASSERT_TRUE(lock.is_locked());
+    });
+
+  t.join();
+
+  lock.unlock();
+  ASSERT_FALSE(lock.is_locked());
+  ASSERT_TRUE(lock.try_lock());
+  ASSERT_TRUE(lock.is_locked());
+}
+
+TYPED_TEST(spinlock_test, try_lock_until)
+{
+  TypeParam lock;
+  ASSERT_FALSE(lock.is_locked());
+  ASSERT_TRUE(lock.try_lock_until(std::chrono::steady_clock::now()));
+  ASSERT_TRUE(lock.is_locked());
+  ASSERT_FALSE(lock.try_lock_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
+
+  std::thread t1(
+    [&lock]() {
+      ASSERT_FALSE(lock.try_lock_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
+      ASSERT_TRUE(lock.is_locked());
+    });
+
+  t1.join();
+
+  std::thread t2(
+    [&lock]() {
+      ASSERT_TRUE(lock.try_lock_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
+      ASSERT_TRUE(lock.is_locked());
+    });
+
+  std::this_thread::sleep_for(std::chrono::nanoseconds(300));
+  lock.unlock();
+  t2.join();
+
+  ASSERT_TRUE(lock.is_locked());
+  ASSERT_FALSE(lock.try_lock_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
+  ASSERT_TRUE(lock.is_locked());
+}
+
+TYPED_TEST(spinlock_test, try_lock_for)
+{
+  TypeParam lock;
+  ASSERT_FALSE(lock.is_locked());
+  ASSERT_TRUE(lock.try_lock_for(std::chrono::milliseconds(1)));
+  ASSERT_TRUE(lock.is_locked());
+  ASSERT_FALSE(lock.try_lock_for(std::chrono::milliseconds(1)));
+
+  std::thread t1(
+    [&lock]() {
+      ASSERT_FALSE(lock.try_lock_for(std::chrono::milliseconds(1)));
+      ASSERT_TRUE(lock.is_locked());
+    });
+
+  t1.join();
+
+  std::thread t2(
+    [&lock]() {
+      ASSERT_TRUE(lock.try_lock_for(std::chrono::milliseconds(1)));
+      ASSERT_TRUE(lock.is_locked());
+    });
+
+  std::this_thread::sleep_for(std::chrono::nanoseconds(300));
+  lock.unlock();
+  t2.join();
+
+  ASSERT_TRUE(lock.is_locked());
+  ASSERT_FALSE(lock.try_lock_for(std::chrono::milliseconds(1)));
+  ASSERT_TRUE(lock.is_locked());
+}

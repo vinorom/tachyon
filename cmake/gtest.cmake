@@ -8,7 +8,7 @@ include(ExternalProject)
 ExternalProject_Add(gtest
     GIT_REPOSITORY "${GTEST_GIT_URL}"
     GIT_TAG "${GTEST_GIT_TAG}"
-    PREFIX "${CMAKE_BINARY_DIR}/3rdparty/gtest"
+    PREFIX "${CMAKE_BINARY_DIR}/3rdparty"
     INSTALL_COMMAND ""
     LOG_DOWNLOAD ON
     LOG_CONFIGURE ON
