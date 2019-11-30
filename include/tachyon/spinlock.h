@@ -1,14 +1,3 @@
-/**
- * https://en.wikipedia.org/wiki/Spinlock
- * todo try_lock, try_lock_until, try_lock_for: http://austria.sourceforge.net/dox/html/classSpinLock.html
- * https://geidav.wordpress.com/2016/12/03/scalable-spinlocks-1-array-based/
- * https://github.com/geidav/spinlocks-bench
- * http://pages.cs.wisc.edu/~remzi/OSTEP/threads-locks.pdf
- *
- * @note Most programs should use mutexes instead of spin locks.
- *       Spin locks are primarily useful in conjunction with real-time scheduling policies.
- */
-
 #pragma once
 
 #include <atomic>
@@ -20,39 +9,41 @@ namespace tachyon
 {
 
 /**
- * LockingPolicy should defines atomic locking logic and provide the following contract.
+ * Spinlock classes.
+ * All classes can be used in combination with std::lock_guard or std::unique_lock.
  */
-//class LockingPolicy
-//{
-//public:
-//  bool is_locked() const;
-//  bool try_lock();
-//  void unlock();
-//};
 
 /**
- * Spinlock class.
- * This class can be used in combination with std::lock_guard or std::unique_lock.
- * @tparam LockingPolicy Policy that defines atomic locking logic.
+ * Naive spinlock that utilizes atomic test-and-set operation (unfair).
  */
-template <class LockingPolicy>
-class spinlock: protected LockingPolicy
+class spinlock_tas
 {
 public:
-  using LockingPolicy::is_locked;
-  using LockingPolicy::try_lock;
-  using LockingPolicy::unlock;
+  ALWAYS_INLINE bool is_locked() const
+  {
+    return locked_.load(std::memory_order_consume);
+  }
 
   ALWAYS_INLINE void lock()
   {
-    while (!LockingPolicy::try_lock()); // spin until the lock is acquired
+    while (!try_lock()); // spin until the lock is acquired
+  }
+
+  ALWAYS_INLINE void unlock()
+  {
+    locked_.store(false, std::memory_order_release);
+  }
+
+  ALWAYS_INLINE bool try_lock()
+  {
+    return !locked_.exchange(true, std::memory_order_acquire);
   }
 
   template <class Clock, class Duration>
   ALWAYS_INLINE bool try_lock_until(const std::chrono::time_point<Clock, Duration>& t)
   {
     auto deadline = std::chrono::time_point_cast<typename Clock::duration, Clock, Duration>(t);
-    while (!LockingPolicy::try_lock()) // spin until the lock is acquired
+    while (!try_lock()) // spin until the lock is acquired
     {
       if (Clock::now() > deadline)
       {
@@ -67,12 +58,16 @@ public:
   {
     return try_lock_until(std::chrono::steady_clock::now() + d);
   }
+
+private:
+  std::atomic_bool locked_ = {false};
+  static_assert(std::atomic_bool::is_always_lock_free);
 };
 
 /**
- * Unfair spinlock policy based on atomic test-and-test operation.
+ * Optimized version of spinlock_tas that spins on reading the lock before calling test-and-set ([test-and-]test-and-set).
  */
-class SpinlockPolicyTAS
+class spinlock_tatas
 {
 public:
   ALWAYS_INLINE bool is_locked() const
@@ -80,14 +75,45 @@ public:
     return locked_.load(std::memory_order_consume);
   }
 
-  ALWAYS_INLINE bool try_lock()
+  ALWAYS_INLINE void lock()
   {
-    return !locked_.exchange(true, std::memory_order_acquire);
+    while (!try_lock()) // spin until the lock is acquired
+    {
+      while (locked_.load(std::memory_order_relaxed));
+    }
   }
 
   ALWAYS_INLINE void unlock()
   {
     locked_.store(false, std::memory_order_release);
+  }
+
+  ALWAYS_INLINE bool try_lock()
+  {
+    return !locked_.exchange(true, std::memory_order_acquire);
+  }
+
+  template <class Clock, class Duration>
+  ALWAYS_INLINE bool try_lock_until(const std::chrono::time_point<Clock, Duration>& t)
+  {
+    auto deadline = std::chrono::time_point_cast<typename Clock::duration, Clock, Duration>(t);
+    while (!try_lock()) // spin until the lock is acquired
+    {
+      while (locked_.load(std::memory_order_relaxed))
+      {
+        if (Clock::now() > deadline)
+        {
+          return false; // time is over
+        }
+      }
+    }
+    return true;
+  }
+
+  template <class Rep, class Period>
+  ALWAYS_INLINE bool try_lock_for(const std::chrono::duration<Rep, Period>& d)
+  {
+    return try_lock_until(std::chrono::steady_clock::now() + d);
   }
 
 private:
@@ -96,14 +122,24 @@ private:
 };
 
 /**
- * Unfair spinlock policy based on atomic compare-and-swap operation.
+ * Naive spinlock that utilizes atomic compare-and-swap operation (unfair).
  */
-class SpinlockPolicyCAS
+class spinlock_cas
 {
 public:
   ALWAYS_INLINE bool is_locked() const
   {
     return locked_.load(std::memory_order_consume);
+  }
+
+  ALWAYS_INLINE void lock()
+  {
+    while (!try_lock()); // spin until the lock is acquired
+  }
+
+  ALWAYS_INLINE void unlock()
+  {
+    locked_.store(false, std::memory_order_release);
   }
 
   ALWAYS_INLINE bool try_lock()
@@ -112,9 +148,24 @@ public:
     return locked_.compare_exchange_strong(expected, true, std::memory_order_acquire);
   }
 
-  ALWAYS_INLINE void unlock()
+  template <class Clock, class Duration>
+  ALWAYS_INLINE bool try_lock_until(const std::chrono::time_point<Clock, Duration>& t)
   {
-    locked_.store(false, std::memory_order_release);
+    auto deadline = std::chrono::time_point_cast<typename Clock::duration, Clock, Duration>(t);
+    while (!try_lock()) // spin until the lock is acquired
+    {
+      if (Clock::now() > deadline)
+      {
+        return false; // time is over
+      }
+    }
+    return true;
+  }
+
+  template <class Rep, class Period>
+  ALWAYS_INLINE bool try_lock_for(const std::chrono::duration<Rep, Period>& d)
+  {
+    return try_lock_until(std::chrono::steady_clock::now() + d);
   }
 
 private:
@@ -123,22 +174,8 @@ private:
 };
 
 /**
- * Fair spinlock policy based on Anderson's array-based queuing lock.
+ * Spinlock based on Anderson's array-based queuing lock (fair).
  */
-class SpinlockPolicyAnderson
-{
-public:
-//  ALWAYS_INLINE bool is_locked() const
-//  {
-//  }
-//
-//  ALWAYS_INLINE bool try_lock()
-//  {
-//  }
-//
-//  ALWAYS_INLINE void unlock()
-//  {
-//  }
-};
+// ...
 
 } // namespace tachyon

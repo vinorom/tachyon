@@ -10,8 +10,9 @@ class spinlock_test: public ::testing::Test
 {};
 
 using spinlock_impls = ::testing::Types<
-  tachyon::spinlock<tachyon::SpinlockPolicyTAS>,
-  tachyon::spinlock<tachyon::SpinlockPolicyCAS>
+  tachyon::spinlock_tas,
+  tachyon::spinlock_tatas,
+  tachyon::spinlock_cas
 >;
 
 TYPED_TEST_SUITE(spinlock_test, spinlock_impls);
