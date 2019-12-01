@@ -12,6 +12,7 @@ class spinlock_test: public ::testing::Test
 using spinlock_impls = ::testing::Types<
   tachyon::spinlock_tas,
   tachyon::spinlock_tatas,
+  tachyon::spinlock_tas_eb,
   tachyon::spinlock_cas
 >;
 
