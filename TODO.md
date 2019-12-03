@@ -9,3 +9,5 @@
 - [ ] http://pages.cs.wisc.edu/~remzi/OSTEP/threads-locks.pdf
 - [ ] http://www.it.uu.se/research/group/languages/software/qd_lock_lib
 - [ ] https://github.com/parapluu/lock_benchmarking
+- [ ] https://9vx.org/presentations/Spinlocks.pdf (tests: performance, fairness)
+- [ ] https://www.modernescpp.com/index.php/fences-as-memory-barriers
