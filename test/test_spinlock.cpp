@@ -6,7 +6,7 @@
 #include <tachyon/spinlock.h>
 
 template <class Spinlock>
-class spinlock_test: public ::testing::Test
+class test_spinlock: public ::testing::Test
 {};
 
 using spinlock_impls = ::testing::Types<
@@ -16,7 +16,7 @@ using spinlock_impls = ::testing::Types<
   tachyon::spinlock_cas
 >;
 
-TYPED_TEST_SUITE(spinlock_test, spinlock_impls);
+TYPED_TEST_SUITE(test_spinlock, spinlock_impls);
 
 template <class Spinlock>
 void test_spinlock_thread_safety(int num_writers, int num_readers, int num_iters)
@@ -75,7 +75,7 @@ void test_spinlock_thread_safety(int num_writers, int num_readers, int num_iters
   }
 }
 
-TYPED_TEST(spinlock_test, thread_safety)
+TYPED_TEST(test_spinlock, thread_safety)
 {
   for (int num_writers = 1; num_writers <= 4; num_writers <<= 1)
   {
@@ -86,7 +86,7 @@ TYPED_TEST(spinlock_test, thread_safety)
   }
 }
 
-TYPED_TEST(spinlock_test, is_locked)
+TYPED_TEST(test_spinlock, is_locked)
 {
   TypeParam lock;
   ASSERT_FALSE(lock.is_locked());
@@ -106,7 +106,7 @@ TYPED_TEST(spinlock_test, is_locked)
   ASSERT_FALSE(lock.is_locked());
 }
 
-TYPED_TEST(spinlock_test, lock_unlock)
+TYPED_TEST(test_spinlock, lock_unlock)
 {
   TypeParam lock;
   ASSERT_FALSE(lock.is_locked());
@@ -126,7 +126,7 @@ TYPED_TEST(spinlock_test, lock_unlock)
   ASSERT_FALSE(lock.is_locked());
 }
 
-TYPED_TEST(spinlock_test, try_lock)
+TYPED_TEST(test_spinlock, try_lock)
 {
   TypeParam lock;
   ASSERT_FALSE(lock.is_locked());
@@ -148,7 +148,7 @@ TYPED_TEST(spinlock_test, try_lock)
   ASSERT_TRUE(lock.is_locked());
 }
 
-TYPED_TEST(spinlock_test, try_lock_until)
+TYPED_TEST(test_spinlock, try_lock_until)
 {
   TypeParam lock;
   ASSERT_FALSE(lock.is_locked());
@@ -179,7 +179,7 @@ TYPED_TEST(spinlock_test, try_lock_until)
   ASSERT_TRUE(lock.is_locked());
 }
 
-TYPED_TEST(spinlock_test, try_lock_for)
+TYPED_TEST(test_spinlock, try_lock_for)
 {
   TypeParam lock;
   ASSERT_FALSE(lock.is_locked());

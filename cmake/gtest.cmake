@@ -1,5 +1,5 @@
 ##################################
-# Download and install googletest
+# Download and install google-test
 
 if(GTEST_SOURCE_DIR AND GTEST_BINARY_DIR)
   return()
@@ -23,8 +23,8 @@ ExternalProject_Get_Property(gtest SOURCE_DIR BINARY_DIR)
 set(GTEST_SOURCE_DIR "${SOURCE_DIR}")
 set(GTEST_BINARY_DIR "${BINARY_DIR}")
 
-message(STATUS "Using gtest: GTEST_SOURCE_DIR=${GTEST_SOURCE_DIR}")
-message(STATUS "Using gtest: GTEST_BINARY_DIR=${GTEST_BINARY_DIR}")
+message(STATUS "Using google-test: GTEST_SOURCE_DIR=${GTEST_SOURCE_DIR}")
+message(STATUS "Using google-test: GTEST_BINARY_DIR=${GTEST_BINARY_DIR}")
 
 include_directories(${GTEST_SOURCE_DIR}/googletest/include)
 include_directories(${GTEST_SOURCE_DIR}/googlemock/include)

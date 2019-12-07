@@ -1,5 +1,5 @@
 ##################################
-# Download and install google benchmark
+# Download and install google-benchmark
 
 if(BENCHMARK_SOURCE_DIR AND BENCHMARK_BINARY_DIR)
     return()
@@ -27,8 +27,8 @@ ExternalProject_Get_Property(benchmark SOURCE_DIR BINARY_DIR)
 set(BENCHMARK_SOURCE_DIR ${SOURCE_DIR})
 set(BENCHMARK_BINARY_DIR ${BINARY_DIR})
 
-message(STATUS "Using benchmark: BENCHMARK_SOURCE_DIR=${BENCHMARK_SOURCE_DIR}")
-message(STATUS "Using benchmark: BENCHMARK_BINARY_DIR=${BENCHMARK_BINARY_DIR}")
+message(STATUS "Using google-benchmark: BENCHMARK_SOURCE_DIR=${BENCHMARK_SOURCE_DIR}")
+message(STATUS "Using google-benchmark: BENCHMARK_BINARY_DIR=${BENCHMARK_BINARY_DIR}")
 
 include_directories(${BENCHMARK_SOURCE_DIR}/include)
 
